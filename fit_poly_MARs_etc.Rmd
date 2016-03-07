@@ -1,0 +1,145 @@
+---
+title: "regression fits to boston"
+output: html_document
+---
+
+## poly
+
+```{r, echo=FALSE}
+library(MASS); attach(Boston)
+
+# a 
+## use poly() to fit a cubic poly for nox~dis
+fit=lm(nox~poly(dis,3))
+
+# report output incl plot. 
+summary(fit)
+
+# plot results
+par(mfrow=c(1,1))
+dislims=range(dis)
+dis.grid=seq(from=dislims[1],to=dislims[2])
+preds=predict(fit,newdata=list(dis=dis.grid),se=TRUE)
+se.bands=cbind(preds$fit+2*preds$se.fit,preds$fit-2*preds$se.fit)
+
+plot(dis,nox,xlim=dislims,cex=0.5,col="darkgrey",main="degree-3 polynomial")
+#title("Degree-3 Polynomial",outer=T)
+lines(dis.grid,preds$fit,lwd=2,col="red")
+matlines(dis.grid,se.bands,lwd=1,col="blue",lty=3)
+
+```
+
+## range of fits 1-10
+
+```{r}
+results=matrix(1:10,10,2); colnames(results)=c("degree","RSS")
+plot(nox~dis,main="nox~poly(dis,i)",cex=0.5,col="darkgrey")
+
+for(i in 1:dim(results)[1]){
+     fit=lm(nox~poly(dis,i))
+     lines(sort(dis), fitted(fit)[order(dis)], col='red',lwd=1)
+     results[i,2]=round(summary(fit)$sigma,3)
+}
+results
+```
+
+## cv, anova for best fit
+
+```{r}
+
+library(boot)
+## alternative 1: cv
+set.seed=123
+polys=NULL
+cv.error.10=rep(0,10)
+
+for(i in 1:length(cv.error.10)){
+     polys[i]=i
+     fit=glm(nox~poly(dis,i),data=Boston)
+     cv.error.10[i]=cv.glm(Boston,fit,K=10)$delta[1]
+}
+
+plot(polys,cv.error.10,xlab="degree of polynomial",
+     ylab="cv mean square error",
+     main="CV MSE of nox~poly(dis,i)")
+lines(polys,cv.error.10,col="red",lwd=2)
+
+# polynomial w/ lowest error rate
+polys[which.min(cv.error.10)]
+sde=sd(cv.error.10)
+polys[cv.error.10<(min(cv.error.10)+sde)]
+
+##### wierd. something wrong in cv or sde calc b/c lm(nox~dis) has 0.59 R2 and lm(nox~dis) has 0.71 R2. yet, using sd of cv.error.10 results in selecting dis^1 model under 1sd rule. 
+
+## alternative 2: anova
+fit1=lm(nox~dis)
+fit2=lm(nox~poly(dis,2))
+fit3=lm(nox~poly(dis,3))
+fit4=lm(nox~poly(dis,4))
+fit5=lm(nox~poly(dis,5))
+fit6=lm(nox~poly(dis,6))
+fit7=lm(nox~poly(dis,7))
+fit8=lm(nox~poly(dis,8))
+fit9=lm(nox~poly(dis,9))
+fit10=lm(nox~poly(dis,10))
+
+anva=anova(fit1,fit2,fit3,fit4,fit5,fit6,fit7,fit8,fit9,fit10)
+# points to a degree 3 polynomial fit. 
+
+plot(polys,anva$RSS,xlab="degree of polynomial",ylab="anova RSS",
+     main="anova rss of nox~poly(dis,i)")
+lines(polys,anva$RSS,col="red",lwd=2)
+min(polys[anva$RSS<min(anva$RSS)+sd(anva$RSS)])
+
+```
+
+## regression splines
+
+```{r}
+
+library(splines)
+
+fit=lm(nox~bs(dis,knots=attr(bs(dis,df=4),"knots")));
+## fit output
+summary(fit)
+
+## how did you choose the "knots". let R choose knots by specifying the target df.
+attr(bs(dis,df=4),"knots")
+
+plot(nox~dis,main="bs(dis,knots=attr(bs(dis,df=4)))",cex=0.5,col="darkgrey")
+lines(sort(dis), fitted(fit)[order(dis)], col='red',lwd=3)
+
+# e
+par(mfrow=c(1,1))
+results=matrix(NA,8,2); colnames(results)=c("df","RSS")
+plot(nox~dis,main="bs(dis,knots=attr(bs(dis,df=i)))",cex=0.5,col="darkgrey")
+
+for(i in 1:8){
+     results[i,1]=i+2
+     fit=lm(nox~bs(dis,knots=attr(bs(dis,df=i+2),"knots"))); print(summary(fit))
+     lines(sort(dis), fitted(fit)[order(dis)], col='red',lwd=1)
+     results[i,2]=round(summary(fit)$sigma,4)
+}
+results
+
+# f
+fit3=lm(nox~bs(dis,knots=attr(bs(dis,df=3),"knots")))
+fit4=lm(nox~bs(dis,knots=attr(bs(dis,df=4),"knots")))
+fit5=lm(nox~bs(dis,knots=attr(bs(dis,df=5),"knots")))
+fit6=lm(nox~bs(dis,knots=attr(bs(dis,df=6),"knots")))
+fit7=lm(nox~bs(dis,knots=attr(bs(dis,df=7),"knots")))
+fit8=lm(nox~bs(dis,knots=attr(bs(dis,df=8),"knots")))
+fit9=lm(nox~bs(dis,knots=attr(bs(dis,df=9),"knots")))
+fit10=lm(nox~bs(dis,knots=attr(bs(dis,df=10),"knots")))
+
+anva=anova(fit3,fit4,fit5,fit6,fit7,fit8,fit9,fit10)
+# points to a degree 3 polynomial fit. 
+
+plot(results[,1],anva$RSS,xlab="degrees of freedom",ylab="anova RSS",
+     main="anova rss of nox~bs(dis,knots=attr(bs(dis,df=n)))")
+lines(results[,1],anva$RSS,col="red",lwd=2)
+# smallest df w/in 1 SD of minimum RSS
+min(results[anva$RSS<min(anva$RSS)+sd(anva$RSS),1])
+
+# if time, do this using CV.
+```
